@@ -9,10 +9,14 @@ import imutils
 import time
 import cv2
 import os
+from datetime import datetime
+import firebase_admin
+from firebase_admin import credentials
+from firebase_admin import db
 
 def  ageAndGenderPredict(frame, faceNet, ageNet,genderNet, minConf=0.5):
 	# define the list of age buckets our age detector will predict
-	ageList = ["(0-2)", "(4-6)", "(8-12)", "(15-20)", "(25-32)",
+	ageList = ["(0-2)", "(4-6)", "(8-12)", "(15-20)","(21-24)", "(25-32)",
 		"(38-43)", "(48-53)", "(60-100)"]
 	genderList = ['M', 'F']
 	# initialize our results list
@@ -78,6 +82,12 @@ def  ageAndGenderPredict(frame, faceNet, ageNet,genderNet, minConf=0.5):
 	# return our results to the calling function
 	return results
 
+# Fetch the service account key JSON file contents
+cred = credentials.Certificate('sistema-sicurezza-con-alexa-firebase-adminsdk-zf6l0-4c89f84297.json')
+# Initialize the app with a service account, granting admin privileges
+firebase_admin.initialize_app(cred, {
+    'databaseURL': 'https://sistema-sicurezza-con-alexa.firebaseio.com/'
+})
 
 defaultConfidence = 0.5
 
@@ -101,8 +111,11 @@ print("Inizia lo stream...")
 vs = VideoStream(src=0).start()
 
 
+
+numSec = 0
 # loop over the frames from the video stream
 while True:
+
 	# grab the frame from the threaded video stream and resize it
 	# to have a maximum width of 400 pixels
 	frame = vs.read()
@@ -112,18 +125,39 @@ while True:
 	# predict the age
 	results = ageAndGenderPredict(frame, faceNet, ageNet,genderNet,
 		minConf=defaultConfidence)
-
+	age = ""
+	gender = ""
 	# loop over the results
 	for r in results:
+		age = r["age"]
+		gender = r["gender"]
 		# draw the bounding box of the face along with the associated
 		# predicted age
-		text = "{}{}".format(r["age"], r["gender"])
+		text = "{}{}".format(age, gender)
 		(startX, startY, endX, endY) = r["loc"]
 		y = startY - 10 if startY - 10 > 10 else startY + 10
 		cv2.rectangle(frame, (startX, startY), (endX, endY),
 			(0, 0, 255), 2)
 		cv2.putText(frame, text, (startX, y),
 			cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
+	#Save
+	ref = db.reference('/persone')
+	current_time = datetime.now().strftime("%m/%d/%Y,%H:%M:%S")
+
+	if age and gender:
+		print("Salvo su db")
+		ref.push({
+			'age': age,
+			'gender': gender,
+			'time': current_time
+		})
+	"""if(numSec%100 == 0):
+		if results:
+			current_time = datetime.now().strftime("%m/%d/%Y,%H:%M:%S")
+
+	numSec+=1"""
+
+
 
 	# show the output frame
 	cv2.imshow("Frame", frame)
@@ -132,7 +166,7 @@ while True:
 	# if the `q` key was pressed, break from the loop
 	if key == ord("q"):
 		break
-		
+
 # do a bit of cleanup
 cv2.destroyAllWindows()
 vs.stop()
