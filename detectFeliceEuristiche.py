@@ -126,17 +126,7 @@ def  ageAndGenderPredict(frame, faceNet, ageNet,genderNet, minConf=0.5):
 	# return our results to the calling function
 	return results
 
-# Fetch the service account key JSON file contents
-"""cred = credentials.Certificate('sistema-sicurezza-con-alexa-firebase-adminsdk-zf6l0-4c89f84297.json')
-# Initialize the app with a service account, granting admin privileges
-firebase_admin.initialize_app(cred, {
-    'databaseURL': 'https://sistema-sicurezza-con-alexa.firebaseio.com/'
-})"""
-cred = credentials.Certificate('myprojectalexa-df864-firebase-adminsdk-q4l0k-03573c4c36.json')
-# Initialize the app with a service account, granting admin privileges
-firebase_admin.initialize_app(cred, {
-    'databaseURL': 'https://myprojectalexa-df864.firebaseio.com/'
-})
+
 
 defaultConfidence = 0.5
 
