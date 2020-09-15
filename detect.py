@@ -13,12 +13,30 @@ from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import db
+from collections import Counter
+
+def save(age,gender):
+	ref = db.reference('/persone')
+	current_time = datetime.now().strftime("%m/%d/%Y,%H:%M:%S")
+	if age and gender:
+		print("Salvo su db")
+		ref.push({
+			'age': age,
+			'gender': gender,
+			'time': current_time
+		})
+
+def ageConf(val):
+	return val["age"][1]
+
+
+def genderConf(val):
+	return val["gender"][1]
+
 
 def  ageAndGenderPredict(frame, faceNet, ageNet,genderNet, minConf=0.5):
 	# define the list of age buckets our age detector will predict
-	ageList = ["(0-2)", "(4-6)", "(8-12)", "(15-20)","(21-24)", "(25-32)",
-		"(38-43)", "(48-53)", "(60-100)"]
-	genderList = ['M', 'F']
+
 	# initialize our results list
 	results = []
 
@@ -63,18 +81,21 @@ def  ageAndGenderPredict(frame, faceNet, ageNet,genderNet, minConf=0.5):
 			# the largest corresponding probability
 			ageNet.setInput(faceBlob)
 			agePreds = ageNet.forward()
+
 			age = ageList[agePreds[0].argmax()]
+			ageConfidence = agePreds[0][agePreds[0].argmax()]
 
 			genderNet.setInput(faceBlob)
 			genderPreds = genderNet.forward()
+			genderConfidence = genderPreds[0][genderPreds[0].argmax()]
 			gender = genderList[genderPreds[0].argmax()]
 			# construct a dictionary consisting of both the face
 			# bounding box location along with the age prediction,
 			# then update our results list
 			d = {
 				"loc": (startX, startY, endX, endY),
-				"age": age,
-				"gender": gender
+				"age": (age,ageConfidence),
+				"gender": (gender,genderConfidence)
 			}
 			results.append(d)
 
@@ -82,6 +103,9 @@ def  ageAndGenderPredict(frame, faceNet, ageNet,genderNet, minConf=0.5):
 	# return our results to the calling function
 	return results
 
+ageList = ["(0-3)", "(4-7)", "(8-14)","(15-24)","(25-37)",
+		"(38-47)", "(48-59)", "(60-100)"]
+genderList = ['M', 'F']
 # Fetch the service account key JSON file contents
 cred = credentials.Certificate('sistema-sicurezza-con-alexa-firebase-adminsdk-zf6l0-4c89f84297.json')
 # Initialize the app with a service account, granting admin privileges
@@ -108,65 +132,95 @@ genderWeightsPath = "gender_detector/gender_net.caffemodel"
 genderNet = cv2.dnn.readNet(genderPrototxtPath,genderWeightsPath)
 
 print("Inizia lo stream...")
-vs = VideoStream(src=0).start()
+"""
+vs = VideoStream('test/1brasile.mp4').start()
+"""
+cap = cv2.VideoCapture('test/37brasilelungo.mp4')
 
-
-
-numSec = 0
+persone = []
+numSec = 1
 # loop over the frames from the video stream
-while True:
+"""while True:"""
+while cap.isOpened():
 
 	# grab the frame from the threaded video stream and resize it
 	# to have a maximum width of 400 pixels
-	frame = vs.read()
+	"""frame = vs.read()"""
+	ret,frame = cap.read()
+
 	frame = imutils.resize(frame, width=400)
 
 	# detect faces in the frame, and for each face in the frame,
 	# predict the age
+
 	results = ageAndGenderPredict(frame, faceNet, ageNet,genderNet,
-		minConf=defaultConfidence)
+	minConf=defaultConfidence)
 	age = ""
 	gender = ""
+
 	# loop over the results
 	for r in results:
-		age = r["age"]
-		gender = r["gender"]
+		age = r["age"][0]
+		ageConfidence = r["age"][1]*100
+
+		gender = r["gender"][0]
+		genderConfidence = r["gender"][1]*100
+
+		(startX, startY, endX, endY) = r["loc"]
+		persone.append(r)
+
 		# draw the bounding box of the face along with the associated
 		# predicted age
-		text = "{}{}".format(age, gender)
-		(startX, startY, endX, endY) = r["loc"]
+		textAge = "{}:{:.2f}%".format(age,ageConfidence)
+		textGender = "{}:{:.2f}%".format(gender, genderConfidence)
 		y = startY - 10 if startY - 10 > 10 else startY + 10
 		cv2.rectangle(frame, (startX, startY), (endX, endY),
-			(0, 0, 255), 2)
-		cv2.putText(frame, text, (startX, y),
-			cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
-	#Save
-	ref = db.reference('/persone')
-	current_time = datetime.now().strftime("%m/%d/%Y,%H:%M:%S")
+			(255, 255, 255), 1)
+		cv2.putText(frame, textAge, (startX, y),
+			cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+		cv2.putText(frame, textGender, (startX, endY+20),
+					cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
 
-	if age and gender:
-		print("Salvo su db")
-		ref.push({
-			'age': age,
-			'gender': gender,
-			'time': current_time
-		})
-	"""if(numSec%100 == 0):
-		if results:
-			current_time = datetime.now().strftime("%m/%d/%Y,%H:%M:%S")
+	if(numSec%120 == 0 ):
+		if(persone):
+			print("***********\nEuristica 1")
+			[(eta,x)]=Counter(x["age"][0] for x in persone ).most_common(1)
+			[(sesso,_)]=Counter(x["gender"][0] for x in persone ).most_common(1)
+			print((eta,sesso))
 
-	numSec+=1"""
+			print("Euristica 2")
+			l = list(persone)
+			l.sort(key=ageConf,reverse = True)
+			eta=l[0]["age"][0]
+			l.sort(key=genderConf, reverse = True)
+			sesso=l[0]["gender"][0]
+			print((eta,sesso))
+
+			print("Euristica 3")
+			[(eta,_)] = Counter(x["age"][0] for x in persone if x and  x["age"][1]>0.7).most_common(1)
+			[(sesso,_)] = Counter(x["gender"][0] for x in persone if x and   x["gender"][1]>0.7).most_common(1)
+			print((eta, sesso))
+
+
+			#Save
+			save(eta,sesso)
+			persone.clear()
+		else:
+			print("Nessun elemento da salvare")
+	numSec+=1
 
 
 
 	# show the output frame
 	cv2.imshow("Frame", frame)
-	key = cv2.waitKey(1) & 0xFF
+
+	key = cv2.waitKey(10) & 0xFF
 
 	# if the `q` key was pressed, break from the loop
 	if key == ord("q"):
 		break
 
 # do a bit of cleanup
+cap.release()
 cv2.destroyAllWindows()
-vs.stop()
+"""vs.stop()"""
